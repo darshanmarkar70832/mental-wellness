@@ -254,10 +254,7 @@ export default function AuthPage() {
                   <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center mr-3">
                     <i className="fas fa-credit-card text-primary"></i>
                   </div>
-                  <div>
-                    <h4 className="font-medium">Pay Per Use</h4>
-                    <p className="text-sm text-muted-foreground">Only pay for the minutes you use, starting at ₹50</p>
-                  </div>
+                  
                 </div>
                 
                 <div className="flex items-center">
