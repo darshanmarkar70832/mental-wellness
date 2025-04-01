@@ -1,25 +1,33 @@
 #!/bin/bash
-set -e
+set -e  # Exit on error
 
-# Temporarily set NODE_ENV to development to install devDependencies
-NODE_ENV=development npm install
+echo "🚀 Starting Deployment Process..."
 
-# Install vite globally to ensure it's available at runtime
-npm install -g vite
+# Install dependencies (including devDependencies for the build)
+npm install
 
-# Now set NODE_ENV to production for the build and runtime
-export NODE_ENV=production
-
-# Push the database schema to ensure tables exist
-echo "Setting up database schema..."
+# Set up database schema
+echo "🔄 Pushing database schema..."
 npm run db:push
 
-# Build the client and ensure proper directory structure
+# Run build process
+echo "🏗️ Building project..."
 npm run build
-# Make sure public directory exists for the server
-mkdir -p server/public
-# Copy build files to the expected location
-cp -r dist/* server/public/ || echo "Warning: Could not copy build files, trying to continue anyway"
 
-# Run the server
+# Ensure the public directory exists
+if [ ! -d "server/public" ]; then
+  echo "⚠️ server/public directory missing, creating it now..."
+  mkdir -p server/public
+fi
+
+# Verify that the build exists
+if [ ! -f "server/public/index.html" ]; then
+  echo "❌ Error: Build failed! No index.html found in server/public"
+  exit 1
+fi
+
+echo "✅ Build completed successfully!"
+
+# Start the server
+echo "🚀 Starting server..."
 node dist/index.js
