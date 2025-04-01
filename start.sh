@@ -14,8 +14,12 @@ export NODE_ENV=production
 echo "Setting up database schema..."
 npm run db:push
 
-# Build the client
+# Build the client and ensure proper directory structure
 npm run build
+# Make sure public directory exists for the server
+mkdir -p server/public
+# Copy build files to the expected location
+cp -r dist/* server/public/ || echo "Warning: Could not copy build files, trying to continue anyway"
 
 # Run the server
 node dist/index.js
