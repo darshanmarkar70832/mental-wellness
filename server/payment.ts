@@ -6,7 +6,8 @@ import { fromZodError } from "zod-validation-error";
 import { Cashfree } from "cashfree-pg";
 
 // Initialize Cashfree SDK
-const cashfree = Cashfree({
+const cashfree = new Cashfree();
+cashfree.setConfig({
   env: process.env.NODE_ENV === "production" ? "PRODUCTION" : "SANDBOX",
   apiVersion: "2022-09-01",
   appId: process.env.CASHFREE_APP_ID || "",
