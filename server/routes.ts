@@ -34,6 +34,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Test endpoint to add minutes directly (for development testing only)
+  app.post("/api/user/minutes", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const minutesToAdd = req.body.minutes || 20;
+      const updatedUser = await storage.updateUserMinutes(req.user.id, minutesToAdd);
+      res.json({ minutes: updatedUser.remainingMinutes });
+    } catch (error) {
+      console.error("Error adding minutes:", error);
+      res.status(500).json({ message: "Failed to add minutes" });
+    }
+  });
+  
   // Get all packages
   app.get("/api/packages", async (req, res) => {
     try {
