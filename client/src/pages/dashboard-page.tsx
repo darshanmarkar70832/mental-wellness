@@ -57,12 +57,7 @@ export default function DashboardPage() {
         <TabsTrigger value="history">Session History</TabsTrigger>
       </TabsList>
       
-      <TabsContent value="usage">
-        <UsageStats 
-          isLoading={loadingConversations}
-          conversations={conversations || []}
-        />
-      </TabsContent>
+      
       
       <TabsContent value="history">
         <SessionHistory 
