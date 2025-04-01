@@ -2,7 +2,7 @@ services:
   - type: web
     name: therapy-chat-app
     env: node
-    buildCommand: npm ci
+    buildCommand: NODE_ENV=development npm ci
     startCommand: bash start.sh
     envVars:
       - key: NODE_ENV
