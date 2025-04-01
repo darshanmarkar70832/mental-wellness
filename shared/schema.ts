@@ -9,6 +9,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
+  phone: text("phone"),
   isAdmin: boolean("is_admin").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   remainingMinutes: doublePrecision("remaining_minutes").default(0).notNull()
@@ -57,7 +58,8 @@ export const insertUserSchema = createInsertSchema(users)
     password: true,
     email: true,
     firstName: true,
-    lastName: true
+    lastName: true,
+    phone: true
   });
 
 // Schema for inserting payments

@@ -8,6 +8,7 @@ import AuthPage from "@/pages/auth-page";
 import DashboardPage from "@/pages/dashboard-page";
 import ChatPage from "@/pages/chat-page";
 import PaymentPage from "@/pages/payment-page";
+import PaymentCallbackPage from "./pages/payment-callback-page";
 import AdminPage from "@/pages/admin-page";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/lib/protected-route";
@@ -20,6 +21,7 @@ function Router() {
       <ProtectedRoute path="/dashboard" component={DashboardPage} />
       <ProtectedRoute path="/chat" component={ChatPage} />
       <ProtectedRoute path="/payment" component={PaymentPage} />
+      <Route path="/payment/callback" component={PaymentCallbackPage} />
       <ProtectedRoute path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
