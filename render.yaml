@@ -1,19 +1,31 @@
 services:
   - type: web
-    name: mindfulai
-    runtime: node
-    buildCommand: npm install && npm run build
+    name: therapy-chat-app
+    env: node
+    buildCommand: npm ci
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: SESSION_SECRET
         generateValue: true
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: therapy-db
+          property: connectionString
       - key: HUGGINGFACE_API_KEY
         sync: false
       - key: CASHFREE_APP_ID
         sync: false
       - key: CASHFREE_SECRET_KEY
         sync: false
-      - key: CASHFREE_API_VERSION
-        value: 2022-09-01
+      - key: CASHFREE_API_BASE
+        value: https://api.cashfree.com/pg
+
+databases:
+  - name: therapy-db
+    databaseName: therapy
+    user: therapy
+    plan: free
