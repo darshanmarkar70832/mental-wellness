@@ -1,7 +1,8 @@
+import React from 'react';
 import { GlassCard } from "@/components/ui/glass-card";
-import { Bot, Lock, CreditCard } from "lucide-react";
+import { Bot, Lock } from "lucide-react";
 
-export default function SolutionSection() {
+const SolutionSection = () => {
   const solutions = [
     {
       icon: <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-secondary" />,
@@ -12,11 +13,6 @@ export default function SolutionSection() {
       icon: <Lock className="h-5 w-5 sm:h-6 sm:w-6 text-secondary" />,
       title: "Privacy-First Design",
       description: "All conversations are encrypted and private. We never share your data with third parties or use it for training."
-    },
-    {
-      icon: <CreditCard className="h-5 w-5 sm:h-6 sm:w-6 text-secondary" />,
-      title: "Pay-Per-Use Model",
-      description: "Only pay for what you use, with sessions starting at just ₹50. No subscriptions or hidden fees."
     }
   ];
   
@@ -110,4 +106,6 @@ export default function SolutionSection() {
       </div>
     </section>
   );
-}
+};
+
+export default SolutionSection;

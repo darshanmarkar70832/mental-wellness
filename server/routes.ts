@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { setupPayment } from "./payment";
+
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { insertMessageSchema } from "@shared/schema";
