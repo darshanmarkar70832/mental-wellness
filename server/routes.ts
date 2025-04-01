@@ -12,9 +12,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes
   setupAuth(app);
   
-  // Set up payment routes
-  setupPayment(app);
-  
   // API routes with /api prefix
   
   // Get user's remaining minutes
@@ -59,19 +56,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Get user's payment history
-  app.get("/api/payments", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    
-    try {
-      const payments = await storage.getPaymentsByUserId(req.user.id);
-      res.json(payments);
-    } catch (error) {
-      console.error("Error fetching payments:", error);
-      res.status(500).json({ message: "Failed to fetch payment history" });
-    }
-  });
-  
   // Start a new conversation
   app.post("/api/conversations", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
@@ -82,10 +66,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      if (user.remainingMinutes <= 0) {
-        return res.status(402).json({ message: "Insufficient minutes. Please purchase more time." });
-      }
-      
+      // Allow starting a conversation without checking minutes
       const conversation = await storage.createConversation({
         userId: req.user.id,
         status: "active"
