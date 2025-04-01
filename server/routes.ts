@@ -6,6 +6,7 @@ import { setupPayment } from "./payment";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { insertMessageSchema } from "@shared/schema";
+import { HfInference } from "@huggingface/inference";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes
@@ -195,7 +196,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       userIds.add(req.user.id);
       
       // Fetch all users
-      for (const userId of userIds) {
+      // Convert Set to Array for iteration
+      const userIdArray = Array.from(userIds);
+      for (const userId of userIdArray) {
         const user = await storage.getUser(userId);
         if (user) users.push(user);
       }
@@ -211,24 +214,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-// Simple AI response generator
+// AI response generator using Hugging Face
 async function generateAIResponse(userMessage: string): Promise<string> {
-  // This is a very basic implementation
-  // In a real application, this would call an actual AI service
-  const responses = [
-    "I understand how you're feeling. Let's explore that further.",
-    "That's a common experience. Here are some strategies that might help...",
-    "Thank you for sharing that with me. How long have you been feeling this way?",
-    "I'm here to support you. Would you like to try some mindfulness exercises?",
-    "It sounds like you're going through a challenging time. Remember that it's okay to ask for help.",
-    "Let's break this down into smaller parts that feel more manageable.",
-    "Have you tried any coping strategies so far? What has worked or not worked?",
-    "That's a normal reaction to what you're experiencing. Let's discuss some ways to address it."
-  ];
-  
-  // Simulate API latency
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  // Return a random response
-  return responses[Math.floor(Math.random() * responses.length)];
+  try {
+    // Use HuggingFace API for inference (completely free)
+    const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
+    
+    // Create a context that makes it act as a helpful therapist
+    const prompt = `You are MindfulAI, a supportive AI-powered therapy assistant. You provide empathetic, 
+    thoughtful responses to help people with their mental health concerns. You never diagnose or prescribe medication, 
+    but focus on active listening and helpful coping strategies.
+    
+    Human: ${userMessage}
+    
+    MindfulAI:`;
+    
+    // Use a free model that's good for conversational AI
+    // DialoGPT-large is free to use and good for conversational responses
+    const response = await hf.textGeneration({
+      model: "microsoft/DialoGPT-large",
+      inputs: prompt,
+      parameters: {
+        max_new_tokens: 100,
+        temperature: 0.7,
+        top_p: 0.95,
+        do_sample: true
+      }
+    });
+    
+    let aiResponse = response.generated_text.replace(prompt, "").trim();
+    
+    // Fallback in case the response is empty or too short
+    if (!aiResponse || aiResponse.length < 10) {
+      const fallbackResponses = [
+        "I understand how you're feeling. Let's explore that further.",
+        "That's a common experience. Here are some strategies that might help you manage those feelings.",
+        "Thank you for sharing that with me. How long have you been feeling this way?",
+        "I'm here to support you. Would you like to try some mindfulness exercises that might help?",
+        "It sounds like you're going through a challenging time. Remember that it's okay to ask for help.",
+        "Let's break this down into smaller parts that might feel more manageable for you.",
+        "Have you tried any coping strategies so far? I'd love to hear what has worked or not worked for you."
+      ];
+      aiResponse = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+    }
+    
+    return aiResponse;
+  } catch (error) {
+    console.error("Error generating AI response:", error);
+    
+    // Fallback responses if the API fails
+    const fallbackResponses = [
+      "I understand how you're feeling. Let's explore that further.",
+      "That's a common experience. Here are some strategies that might help you manage those feelings.",
+      "Thank you for sharing that with me. How long have you been feeling this way?",
+      "I'm here to support you. Would you like to try some mindfulness exercises that might help?",
+      "It sounds like you're going through a challenging time. Remember that it's okay to ask for help.",
+      "Let's break this down into smaller parts that might feel more manageable for you.",
+      "Have you tried any coping strategies so far? I'd love to hear what has worked or not worked for you."
+    ];
+    
+    return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+  }
 }
