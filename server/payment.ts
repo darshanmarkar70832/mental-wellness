@@ -3,15 +3,14 @@ import { storage } from "./storage";
 import { insertPaymentSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { Cashfree } from "cashfree-pg";
+const cashfree = require('cashfree-pg');
 
 // Initialize Cashfree SDK
-const cashfree = new Cashfree();
-cashfree.setConfig({
+const cfPg = cashfree.init({
   env: process.env.NODE_ENV === "production" ? "PRODUCTION" : "SANDBOX",
-  apiVersion: "2022-09-01",
-  appId: process.env.CASHFREE_APP_ID || "",
-  secretKey: process.env.CASHFREE_SECRET_KEY || "",
+  apiId: process.env.CASHFREE_APP_ID,
+  apiSecret: process.env.CASHFREE_SECRET_KEY,
+  apiVersion: "2022-09-01"
 });
 
 // Add error logging utility
@@ -45,25 +44,25 @@ export function setupPayment(app: Express) {
       // Create order with Cashfree
       try {
         const orderPayload = {
-          order_id: orderId,
-          order_amount: packageItem.price,
-          order_currency: "INR",
-          customer_details: {
-            customer_id: req.user.id.toString(),
-            customer_name: `${req.user.firstName} ${req.user.lastName}`,
-            customer_email: req.user.email,
-            customer_phone: req.user.phone || "9999999999"
+          orderId: orderId,
+          orderAmount: packageItem.price,
+          orderCurrency: "INR",
+          customerDetails: {
+            customerId: req.user.id.toString(),
+            customerName: `${req.user.firstName} ${req.user.lastName}`,
+            customerEmail: req.user.email,
+            customerPhone: req.user.phone || "9999999999"
           },
-          order_meta: {
-            notify_url: `${req.protocol}://${req.get('host')}/api/payments/webhook`,
-            return_url: `${req.protocol}://${req.get('host')}/payment/callback?userId=${req.user.id}&packageId=${packageId}&orderId=${orderId}`,
+          orderMeta: {
+            notifyUrl: `${req.protocol}://${req.get('host')}/api/payments/webhook`,
+            returnUrl: `${req.protocol}://${req.get('host')}/payment/callback?userId=${req.user.id}&packageId=${packageId}&orderId=${orderId}`,
           },
-          order_note: "MindfulAI Therapy Package"
+          orderNote: "MindfulAI Therapy Package"
         };
 
         console.log('Initiating payment:', { orderId, userId: req.user.id, amount: packageItem.price });
         
-        const response = await cashfree.orders.createOrder(orderPayload);
+        const response = await cfPg.orders.createOrder(orderPayload);
         
         // Add package details to the response for the frontend
         const orderDetails = {
@@ -71,7 +70,7 @@ export function setupPayment(app: Express) {
           packageDetails: packageItem
         };
         
-        console.log('Payment initiated:', { orderId, paymentLink: response.payment_link });
+        console.log('Payment initiated:', { orderId, paymentLink: response.paymentLink });
         res.json(orderDetails);
       } catch (error) {
         logPaymentError(error, 'Create Order', orderId);
@@ -105,14 +104,14 @@ export function setupPayment(app: Express) {
 
       // Verify payment status with Cashfree
       try {
-        const orderDetails = await cashfree.orders.getOrder({ order_id: orderId });
+        const orderDetails = await cfPg.orders.getOrder({ orderId });
         
         // Only process if payment is successful
-        if (orderDetails.order_status !== "PAID") {
-          console.log('Payment not completed:', { orderId, status: orderDetails.order_status });
+        if (orderDetails.orderStatus !== "PAID") {
+          console.log('Payment not completed:', { orderId, status: orderDetails.orderStatus });
           return res.status(400).json({ 
             message: "Payment not completed",
-            status: orderDetails.order_status 
+            status: orderDetails.orderStatus 
           });
         }
         
@@ -133,7 +132,7 @@ export function setupPayment(app: Express) {
           userId: parseInt(userId),
           amount: packageItem.price,
           minutes: packageItem.minutes,
-          paymentId: paymentId || orderDetails.cf_payment_id,
+          paymentId: paymentId || orderDetails.cfPaymentId,
           status: "SUCCESS"
         });
         
@@ -150,7 +149,7 @@ export function setupPayment(app: Express) {
         res.json({ 
           message: "Payment processed successfully", 
           payment,
-          orderStatus: orderDetails.order_status
+          orderStatus: orderDetails.orderStatus
         });
       } catch (error) {
         logPaymentError(error, 'Verify Payment', orderId);
@@ -167,7 +166,7 @@ export function setupPayment(app: Express) {
   
   // Webhook for payment status updates from Cashfree
   app.post("/api/payments/webhook", async (req, res) => {
-    const orderId = req.body?.data?.order?.order_id || 'unknown';
+    const orderId = req.body?.data?.order?.orderId || 'unknown';
     try {
       const eventData = req.body;
       
@@ -191,10 +190,10 @@ export function setupPayment(app: Express) {
         
         // Create or update payment record
         await storage.createPayment({
-          userId: parseInt(orderData.customer_details.customer_id),
-          amount: parseFloat(orderData.order_amount),
+          userId: parseInt(orderData.customerDetails.customerId),
+          amount: parseFloat(orderData.orderAmount),
           minutes: 0, // This will be updated based on the package
-          paymentId: paymentData.cf_payment_id,
+          paymentId: paymentData.cfPaymentId,
           status: "SUCCESS"
         });
       }
