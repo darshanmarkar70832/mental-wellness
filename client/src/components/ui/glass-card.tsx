@@ -1,21 +1,20 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Card, CardProps } from "@/components/ui/card";
 
-export interface GlassCardProps extends CardProps {
+interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
 }
 
-export function GlassCard({ className, children, ...props }: GlassCardProps) {
+export function GlassCard({ children, className, ...props }: GlassCardProps) {
   return (
-    <Card
+    <div
       className={cn(
-        "bg-card/70 backdrop-blur-md border border-border",
+        "rounded-lg border border-border/50 bg-background/10 backdrop-blur-lg p-6",
         className
       )}
       {...props}
     >
       {children}
-    </Card>
+    </div>
   );
 }

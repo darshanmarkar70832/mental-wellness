@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useRoute, useRouter } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
@@ -30,7 +30,7 @@ export default function PaymentCallbackPage() {
         packageId,
         orderId,
         paymentId,
-        status: orderStatus || "SUCCESS" // Default for development, real value from Cashfree
+        status: orderStatus || "SUCCESS"
       };
       
       const res = await apiRequest("POST", "/api/payments/callback", data);
@@ -76,26 +76,26 @@ export default function PaymentCallbackPage() {
   }, [userId, packageId]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black">
-      <Card className="w-[450px] bg-background/10 backdrop-blur-lg border-border/50">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center text-foreground">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-[450px] bg-background/10 backdrop-blur-lg border-border/50">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-xl md:text-2xl text-center text-foreground">
             {status === "loading" && "Processing Payment"}
             {status === "success" && "Payment Successful"}
             {status === "error" && "Payment Failed"}
           </CardTitle>
-          <CardDescription className="text-center text-muted-foreground">
+          <CardDescription className="text-center text-sm md:text-base text-muted-foreground">
             Order ID: {orderId || "N/A"}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-6">
-          {status === "loading" && <Loader2 className="h-20 w-20 text-primary animate-spin" />}
-          {status === "success" && <CheckCircle className="h-20 w-20 text-green-500" />}
-          {status === "error" && <XCircle className="h-20 w-20 text-red-500" />}
+        <CardContent className="flex flex-col items-center justify-center py-6 space-y-4">
+          {status === "loading" && <Loader2 className="h-16 w-16 md:h-20 md:w-20 text-primary animate-spin" />}
+          {status === "success" && <CheckCircle className="h-16 w-16 md:h-20 md:w-20 text-green-500" />}
+          {status === "error" && <XCircle className="h-16 w-16 md:h-20 md:w-20 text-red-500" />}
           
-          <p className="mt-4 text-center text-foreground">{message}</p>
+          <p className="text-center text-sm md:text-base text-foreground max-w-sm">{message}</p>
         </CardContent>
-        <CardFooter className="flex justify-center">
+        <CardFooter className="flex justify-center px-4 pb-4">
           <Button 
             variant="default" 
             className="w-full"

@@ -12,6 +12,9 @@ import PaymentCallbackPage from "./pages/payment-callback-page";
 import AdminPage from "@/pages/admin-page";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/lib/protected-route";
+import PrivacyPolicyPage from "./pages/privacy-policy";
+import TermsPage from "./pages/terms";
+import RefundPolicyPage from "./pages/refund-policy";
 
 function Router() {
   return (
@@ -23,6 +26,9 @@ function Router() {
       <ProtectedRoute path="/payment" component={PaymentPage} />
       <Route path="/payment/callback" component={PaymentCallbackPage} />
       <ProtectedRoute path="/admin" component={AdminPage} />
+      <Route path="/privacy-policy" component={PrivacyPolicyPage} />
+      <Route path="/terms" component={TermsPage} />
+      <Route path="/refund-policy" component={RefundPolicyPage} />
       <Route component={NotFound} />
     </Switch>
   );

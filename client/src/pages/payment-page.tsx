@@ -17,6 +17,11 @@ export default function PaymentPage() {
   const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
   const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "success">("select");
   const [paymentData, setPaymentData] = useState<any>(null);
+  const [cardDetails, setCardDetails] = useState({
+    cardNumber: '',
+    expiryDate: '',
+    cvv: ''
+  });
   
   // Fetch available packages
   const { data: packages, isLoading: loadingPackages } = useQuery<Package[]>({
@@ -47,36 +52,15 @@ export default function PaymentPage() {
     },
   });
   
-  // Process payment mutation (simulating Cashfree integration)
+  // Process payment mutation
   const processPaymentMutation = useMutation({
     mutationFn: async () => {
-      // In a real application, this would be handled by the Cashfree SDK
-      // For this demo, we're simulating a successful payment
-      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API delay
-      
-      const res = await apiRequest("POST", "/api/payments/callback", {
-        userId: user?.id,
-        packageId: selectedPackage,
-        orderId: paymentData.orderId,
-        paymentId: `pay_${Date.now()}`,
-        status: "SUCCESS"
-      });
-      
-      return res.json();
-    },
-    onSuccess: () => {
-      setPaymentStep("success");
-      queryClient.invalidateQueries({ queryKey: ["/api/user/minutes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      
-      toast({
-        title: "Payment successful",
-        description: "Your minutes have been added to your account.",
-      });
+      // Redirect to Cashfree payment page
+      window.location.href = paymentData.paymentLink;
     },
     onError: (error: Error) => {
       toast({
-        title: "Payment failed",
+        title: "Payment initiation failed",
         description: error.message,
         variant: "destructive",
       });
@@ -120,12 +104,12 @@ export default function PaymentPage() {
           </Button>
           
           <Brain className="h-6 w-6 text-primary mr-2" />
-          <h1 className="text-xl font-bold">MindfulAI Payment</h1>
+          <h1 className="text-lg md:text-xl font-bold">MindfulAI Payment</h1>
         </div>
       </header>
       
-      <main className="container mx-auto px-4 pt-24 pb-12 max-w-4xl">
-        <h2 className="text-2xl font-bold mb-6">
+      <main className="container mx-auto px-4 pt-20 md:pt-24 pb-12 max-w-4xl">
+        <h2 className="text-xl md:text-2xl font-bold mb-6">
           {paymentStep === "select" && "Select a Package"}
           {paymentStep === "payment" && "Complete Payment"}
           {paymentStep === "success" && "Payment Successful"}
@@ -133,16 +117,16 @@ export default function PaymentPage() {
         
         {paymentStep === "select" && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
               {loadingPackages ? (
-                <div className="col-span-3 flex justify-center py-12">
+                <div className="col-span-full flex justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : (
                 packages?.map((pkg) => (
                   <GlassCard 
                     key={pkg.id}
-                    className={`p-6 relative ${
+                    className={`p-4 md:p-6 relative ${
                       selectedPackage === pkg.id 
                         ? "border-primary" 
                         : "border-border hover:border-primary/50"
@@ -150,20 +134,20 @@ export default function PaymentPage() {
                     onClick={() => handleSelectPackage(pkg.id)}
                   >
                     {pkg.isPopular && (
-                      <div className="absolute top-0 right-0 bg-primary text-white text-xs font-bold px-3 py-1 rounded-tr-md rounded-bl-md">
+                      <div className="absolute -top-1 -right-1 bg-primary text-white text-xs font-bold px-2 py-0.5 rounded-br-md rounded-tl-md">
                         POPULAR
                       </div>
                     )}
                     
-                    <div className="text-center mb-4">
-                      <h3 className="text-xl font-bold">{pkg.name}</h3>
+                    <div className="text-center">
+                      <h3 className="text-lg md:text-xl font-bold">{pkg.name}</h3>
                       
-                      <div className="mt-4">
-                        <span className="text-3xl font-bold">₹{pkg.price}</span>
-                        <span className="text-muted-foreground">/package</span>
+                      <div className="mt-3 md:mt-4">
+                        <span className="text-2xl md:text-3xl font-bold">₹{pkg.price}</span>
+                        <span className="text-sm md:text-base text-muted-foreground">/package</span>
                       </div>
                       
-                      <p className="text-muted-foreground mt-2">{pkg.minutes} minutes of AI therapy</p>
+                      <p className="text-sm md:text-base text-muted-foreground mt-2">{pkg.minutes} minutes of AI therapy</p>
                     </div>
                     
                     {selectedPackage === pkg.id && (
@@ -176,11 +160,11 @@ export default function PaymentPage() {
               )}
             </div>
             
-            <div className="flex justify-end">
+            <div className="flex justify-end mt-6">
               <Button 
                 onClick={handleInitiatePayment}
                 disabled={!selectedPackage || initiatePaymentMutation.isPending}
-                className="flex items-center gap-2"
+                className="w-full sm:w-auto flex items-center gap-2"
               >
                 {initiatePaymentMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -194,110 +178,72 @@ export default function PaymentPage() {
         )}
         
         {paymentStep === "payment" && paymentData && (
-          <GlassCard className="p-6">
-            <h3 className="text-xl font-bold mb-4">Payment Details</h3>
+          <GlassCard className="p-4 md:p-6">
+            <h3 className="text-lg md:text-xl font-bold mb-4">Payment Details</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 mb-6">
               <div>
-                <p className="text-muted-foreground mb-1">Package</p>
+                <p className="text-sm text-muted-foreground mb-1">Package</p>
                 <p className="font-medium">{paymentData.packageDetails.name}</p>
               </div>
               
               <div>
-                <p className="text-muted-foreground mb-1">Amount</p>
+                <p className="text-sm text-muted-foreground mb-1">Amount</p>
                 <p className="font-medium">₹{paymentData.orderAmount}</p>
               </div>
               
               <div>
-                <p className="text-muted-foreground mb-1">Order ID</p>
-                <p className="font-medium">{paymentData.orderId}</p>
+                <p className="text-sm text-muted-foreground mb-1">Order ID</p>
+                <p className="font-medium break-all">{paymentData.orderId}</p>
               </div>
               
               <div>
-                <p className="text-muted-foreground mb-1">Minutes</p>
+                <p className="text-sm text-muted-foreground mb-1">Minutes</p>
                 <p className="font-medium">{paymentData.packageDetails.minutes} minutes</p>
               </div>
             </div>
             
-            {/* Payment Methods (simulated) */}
-            <div className="border border-border rounded-md p-4 mb-6">
-              <h4 className="font-medium mb-4">Payment Method</h4>
-              
-              <div className="flex flex-wrap gap-4 mb-4">
-                <Card className="border-primary">
-                  <CardContent className="p-4 flex items-center">
-                    <div className="w-8 h-8 mr-2 flex items-center justify-center">
-                      <i className="fas fa-credit-card text-lg text-primary"></i>
-                    </div>
-                    <span>Credit/Debit Card</span>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardContent className="p-4 flex items-center">
-                    <div className="w-8 h-8 mr-2 flex items-center justify-center">
-                      <i className="fas fa-university text-lg"></i>
-                    </div>
-                    <span>Net Banking</span>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardContent className="p-4 flex items-center">
-                    <div className="w-8 h-8 mr-2 flex items-center justify-center">
-                      <i className="fas fa-wallet text-lg"></i>
-                    </div>
-                    <span>UPI</span>
-                  </CardContent>
-                </Card>
-              </div>
-              
-              {/* Simulated Card Form */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Card Number</label>
-                  <input 
-                    type="text" 
-                    className="w-full p-2 rounded-md bg-background border border-border"
-                    placeholder="1234 5678 9012 3456"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Expiry Date</label>
-                    <input 
-                      type="text" 
-                      className="w-full p-2 rounded-md bg-background border border-border"
-                      placeholder="MM/YY"
-                    />
-                  </div>
+            <div className="space-y-6">
+              <div>
+                <h4 className="font-medium mb-4">Select Payment Method</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card className="border-primary">
+                    <CardContent className="p-4 flex items-center">
+                      <CreditCard className="h-5 w-5 mr-2 text-primary" />
+                      <span className="text-sm">Credit/Debit Card</span>
+                    </CardContent>
+                  </Card>
                   
-                  <div>
-                    <label className="block text-sm font-medium mb-1">CVV</label>
-                    <input 
-                      type="text" 
-                      className="w-full p-2 rounded-md bg-background border border-border"
-                      placeholder="123"
-                    />
-                  </div>
+                  <Card>
+                    <CardContent className="p-4 flex items-center">
+                      <i className="fas fa-university text-lg mr-2"></i>
+                      <span className="text-sm">Net Banking</span>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardContent className="p-4 flex items-center">
+                      <i className="fas fa-wallet text-lg mr-2"></i>
+                      <span className="text-sm">UPI</span>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
-            </div>
-            
-            <div className="flex justify-end">
-              <Button 
-                onClick={handleCompletePayment}
-                disabled={processPaymentMutation.isPending}
-                className="flex items-center gap-2"
-              >
-                {processPaymentMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CreditCard className="h-4 w-4" />
-                )}
-                Pay ₹{paymentData.orderAmount}
-              </Button>
+              
+              <div className="flex justify-end">
+                <Button 
+                  onClick={handleCompletePayment}
+                  disabled={processPaymentMutation.isPending}
+                  className="w-full sm:w-auto flex items-center gap-2"
+                >
+                  {processPaymentMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CreditCard className="h-4 w-4" />
+                  )}
+                  Pay ₹{paymentData.orderAmount}
+                </Button>
+              </div>
             </div>
           </GlassCard>
         )}
@@ -322,7 +268,7 @@ export default function PaymentPage() {
         {/* Recent Payments */}
         {paymentStep === "select" && (
           <div className="mt-12">
-            <h3 className="text-xl font-bold mb-4">Payment History</h3>
+            <h3 className="text-lg md:text-xl font-bold mb-4">Payment History</h3>
             
             {loadingPayments ? (
               <div className="flex justify-center py-8">
@@ -330,39 +276,41 @@ export default function PaymentPage() {
               </div>
             ) : payments && payments.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b border-border">
-                    <tr>
-                      <th className="text-left p-3">Date</th>
-                      <th className="text-left p-3">Amount</th>
-                      <th className="text-left p-3">Minutes</th>
-                      <th className="text-left p-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((payment) => (
-                      <tr key={payment.id} className="border-b border-border">
-                        <td className="p-3">
-                          {new Date(payment.createdAt).toLocaleDateString()}
-                        </td>
-                        <td className="p-3">₹{payment.amount}</td>
-                        <td className="p-3">{payment.minutes} min</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            payment.status === "SUCCESS" 
-                              ? "bg-green-500/20 text-green-500" 
-                              : "bg-amber-500/20 text-amber-500"
-                          }`}>
-                            {payment.status}
-                          </span>
-                        </td>
+                <div className="inline-block min-w-full align-middle">
+                  <table className="w-full">
+                    <thead className="border-b border-border">
+                      <tr>
+                        <th className="text-left p-3 text-sm font-medium">Date</th>
+                        <th className="text-left p-3 text-sm font-medium">Amount</th>
+                        <th className="text-left p-3 text-sm font-medium">Minutes</th>
+                        <th className="text-left p-3 text-sm font-medium">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {payments.map((payment) => (
+                        <tr key={payment.id} className="border-b border-border">
+                          <td className="p-3 text-sm">
+                            {new Date(payment.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="p-3 text-sm">₹{payment.amount}</td>
+                          <td className="p-3 text-sm">{payment.minutes} min</td>
+                          <td className="p-3">
+                            <span className={`px-2 py-1 rounded-full text-xs ${
+                              payment.status === "SUCCESS" 
+                                ? "bg-green-500/20 text-green-500" 
+                                : "bg-amber-500/20 text-amber-500"
+                            }`}>
+                              {payment.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : (
-              <p className="text-muted-foreground py-8 text-center">No payment history found.</p>
+              <p className="text-muted-foreground py-8 text-center text-sm">No payment history found.</p>
             )}
           </div>
         )}

@@ -3,25 +3,32 @@ import { storage } from "./storage";
 import { insertPaymentSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-// Import Cashfree manually to avoid TypeScript errors
-import { Cashfree } from "cashfree-pg";
+import { Cashfree, PaymentModes } from "cashfree-pg";
 
 // Initialize Cashfree SDK
-let cashfree: any;
+let cashfree: Cashfree;
 try {
   cashfree = new Cashfree({
-    "clientId": process.env.CASHFREE_APP_ID,
-    "clientSecret": process.env.CASHFREE_SECRET_KEY,
-    "env": process.env.NODE_ENV === "production" ? "prod" : "sandbox"
+    appId: process.env.CASHFREE_APP_ID!,
+    clientId: process.env.CASHFREE_CLIENT_ID!,
+    clientSecret: process.env.CASHFREE_SECRET_KEY!,
+    environment: process.env.NODE_ENV === "production" ? "PRODUCTION" : "SANDBOX"
   });
 } catch (error) {
-  console.warn("Failed to initialize Cashfree SDK:", error);
-  // Create a mock cashfree object for development
-  cashfree = {
-    createOrder: async () => ({ paymentLink: "/payment/simulate" }),
-    getOrder: async () => ({ orderStatus: "PAID" })
-  };
+  console.error("Failed to initialize Cashfree SDK:", error);
+  throw new Error("Payment gateway initialization failed");
 }
+
+// Add error logging utility
+const logPaymentError = (error: any, context: string, orderId?: string) => {
+  console.error(`Payment Error [${context}]${orderId ? ` OrderID: ${orderId}` : ''}:`, {
+    message: error.message,
+    code: error.code,
+    type: error.type,
+    details: error.details,
+    stack: error.stack
+  });
+};
 
 export function setupPayment(app: Express) {
   // Initiate payment for a package
@@ -40,7 +47,7 @@ export function setupPayment(app: Express) {
         return res.status(404).json({ message: "Package not found" });
       }
       
-      const orderId = `order_${Date.now()}`;
+      const orderId = `order_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
       // Create order with Cashfree
       try {
@@ -52,26 +59,17 @@ export function setupPayment(app: Express) {
             customerId: req.user.id.toString(),
             customerName: `${req.user.firstName} ${req.user.lastName}`,
             customerEmail: req.user.email,
-            customerPhone: req.user.phone || "9999999999" // Fallback phone if not provided
+            customerPhone: req.user.phone || "9999999999"
           },
           orderMeta: {
             notifyUrl: `${req.protocol}://${req.get('host')}/api/payments/webhook`,
-            returnUrl: `${req.protocol}://${req.get('host')}/payment/callback?userId=${req.user.id}&packageId=${packageId}&orderId=${orderId}`
+            returnUrl: `${req.protocol}://${req.get('host')}/payment/callback?userId=${req.user.id}&packageId=${packageId}&orderId=${orderId}`,
+            paymentMethods: "cc,dc,nb,upi"
           }
         };
+
+        console.log('Initiating payment:', { orderId, userId: req.user.id, amount: packageItem.price });
         
-        // If Cashfree API not working, return a simulated order response for development
-        if (!process.env.CASHFREE_APP_ID || !process.env.CASHFREE_SECRET_KEY) {
-          console.warn("Cashfree credentials not configured. Using simulated order.");
-          const simulatedOrder = {
-            ...orderPayload,
-            paymentLink: `${req.protocol}://${req.get('host')}/payment/simulate?orderId=${orderId}`,
-            packageDetails: packageItem
-          };
-          return res.json(simulatedOrder);
-        }
-        
-        // Otherwise, actually create the order with Cashfree
         const response = await cashfree.createOrder(orderPayload);
         
         // Add package details to the response for the frontend
@@ -80,143 +78,162 @@ export function setupPayment(app: Express) {
           packageDetails: packageItem
         };
         
+        console.log('Payment initiated:', { orderId, paymentLink: response.paymentLink });
         res.json(orderDetails);
-      } catch (cashfreeError) {
-        console.error("Cashfree API Error:", cashfreeError);
-        
-        // Return fallback response for development
-        const fallbackOrderDetails = {
-          orderId,
-          orderAmount: packageItem.price,
-          orderCurrency: "INR",
-          paymentLink: `${req.protocol}://${req.get('host')}/payment/simulate?orderId=${orderId}`,
-          customerDetails: {
-            customerId: req.user.id.toString(),
-            customerName: `${req.user.firstName} ${req.user.lastName}`,
-            customerEmail: req.user.email
-          },
-          packageDetails: packageItem,
-          error: "Could not connect to Cashfree. Using simulated order for development."
-        };
-        
-        res.json(fallbackOrderDetails);
+      } catch (error) {
+        logPaymentError(error, 'Create Order', orderId);
+        res.status(500).json({ 
+          message: "Failed to initiate payment. Please try again.",
+          error: error.message 
+        });
       }
     } catch (error) {
-      console.error("Error initiating payment:", error);
+      logPaymentError(error, 'Payment Initiation');
       res.status(500).json({ message: "Failed to initiate payment" });
     }
   });
   
   // Process payment callback from Cashfree
   app.post("/api/payments/callback", async (req, res) => {
+    const orderId = req.body.orderId || 'unknown';
     try {
-      // Get payment details from request body
       const { 
         userId, 
-        packageId, 
-        orderId, 
-        paymentId = `pay_${Date.now()}`, // Fallback payment ID for development
-        status = "SUCCESS" // Default status for development
+        packageId,
+        paymentId,
+        orderStatus
       } = req.body;
       
-      if (!userId || !packageId) {
+      if (!userId || !packageId || !orderId) {
         return res.status(400).json({ message: "Missing required payment details" });
       }
       
-      // Ensure user exists
-      const user = await storage.getUser(parseInt(userId));
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      // Ensure package exists
-      const packageItem = await storage.getPackageById(parseInt(packageId));
-      if (!packageItem) {
-        return res.status(404).json({ message: "Package not found" });
-      }
-      
-      // Verify payment status with Cashfree in production
-      let paymentStatus = status;
-      
-      if (process.env.NODE_ENV === "production" && process.env.CASHFREE_APP_ID && process.env.CASHFREE_SECRET_KEY) {
-        try {
-          const orderStatus = await cashfree.getOrder(orderId);
-          paymentStatus = orderStatus.orderStatus;
-        } catch (cashfreeError) {
-          console.error("Error verifying payment with Cashfree:", cashfreeError);
-          // Continue with the provided status if verification fails
+      console.log('Processing payment callback:', { orderId, userId, packageId, status: orderStatus });
+
+      // Verify payment status with Cashfree
+      try {
+        const orderDetails = await cashfree.getOrder(orderId);
+        
+        // Only process if payment is successful
+        if (orderDetails.orderStatus !== "PAID") {
+          console.log('Payment not completed:', { orderId, status: orderDetails.orderStatus });
+          return res.status(400).json({ 
+            message: "Payment not completed",
+            status: orderDetails.orderStatus 
+          });
         }
-      }
-      
-      // Create payment record
-      const payment = await storage.createPayment({
-        userId: parseInt(userId),
-        amount: packageItem.price,
-        minutes: packageItem.minutes,
-        paymentId,
-        status: paymentStatus
-      });
-      
-      // If payment was successful, add the minutes to the user's account
-      if (paymentStatus === "SUCCESS" || paymentStatus === "PAID") {
+        
+        // Ensure user exists
+        const user = await storage.getUser(parseInt(userId));
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+        
+        // Ensure package exists
+        const packageItem = await storage.getPackageById(parseInt(packageId));
+        if (!packageItem) {
+          return res.status(404).json({ message: "Package not found" });
+        }
+        
+        // Create payment record
+        const payment = await storage.createPayment({
+          userId: parseInt(userId),
+          amount: packageItem.price,
+          minutes: packageItem.minutes,
+          paymentId: paymentId || orderDetails.paymentId,
+          orderId,
+          status: "SUCCESS"
+        });
+        
+        // Add the minutes to the user's account
         await storage.updateUserMinutes(parseInt(userId), packageItem.minutes);
+        
+        console.log('Payment processed successfully:', { 
+          orderId, 
+          userId, 
+          amount: packageItem.price, 
+          minutes: packageItem.minutes 
+        });
+
+        res.json({ 
+          message: "Payment processed successfully", 
+          payment,
+          orderStatus: orderDetails.orderStatus
+        });
+      } catch (error) {
+        logPaymentError(error, 'Verify Payment', orderId);
+        res.status(500).json({ 
+          message: "Failed to verify payment. Please contact support.",
+          error: error.message 
+        });
       }
-      
-      res.json({ message: "Payment processed successfully", payment });
     } catch (error) {
-      if (error instanceof ZodError) {
-        return res.status(400).json({ message: fromZodError(error).message });
-      }
-      console.error("Error processing payment:", error);
+      logPaymentError(error, 'Payment Callback', orderId);
       res.status(500).json({ message: "Failed to process payment" });
     }
   });
   
   // Webhook for payment status updates from Cashfree
   app.post("/api/payments/webhook", async (req, res) => {
+    const orderId = req.body?.data?.order?.orderId || 'unknown';
     try {
       const eventData = req.body;
       
-      // Verify webhook signature in production
-      if (process.env.NODE_ENV === "production" && process.env.CASHFREE_APP_ID && process.env.CASHFREE_SECRET_KEY) {
-        try {
-          const signature = req.headers["x-webhook-signature"] as string;
-          if (!signature) {
-            return res.status(400).json({ message: "Missing signature header" });
-          }
-          
-          // Verify the signature (implement according to Cashfree docs)
-          // const isValid = cashfree.verifyWebhookSignature(eventData, signature);
-          // if (!isValid) {
-          //   return res.status(401).json({ message: "Invalid signature" });
-          // }
-        } catch (verifyError) {
-          console.error("Error verifying webhook signature:", verifyError);
-          return res.status(500).json({ message: "Failed to verify webhook signature" });
-        }
+      console.log('Received webhook:', { 
+        orderId,
+        event: eventData.type,
+        timestamp: new Date().toISOString()
+      });
+
+      // Verify webhook signature
+      const signature = req.headers["x-webhook-signature"] as string;
+      if (!signature) {
+        console.warn('Missing webhook signature:', { orderId });
+        return res.status(400).json({ message: "Missing signature header" });
+      }
+      
+      // Verify the signature
+      const isValid = await cashfree.verifyWebhookSignature(eventData, signature);
+      if (!isValid) {
+        console.warn('Invalid webhook signature:', { orderId });
+        return res.status(401).json({ message: "Invalid signature" });
       }
       
       // Process the webhook event
       const { data } = eventData;
       
-      if (data) {
-        const { order } = data;
-        if (order) {
-          const { orderId, orderStatus } = order;
-          
-          console.log(`Payment webhook: OrderID: ${orderId}, Status: ${orderStatus}`);
-          
-          // Find payment by orderId and update status
-          // For a real implementation, you would:
-          // 1. Find the payment associated with this order
-          // 2. Update the payment status
-          // 3. If the status changed to PAID, add minutes to the user
+      if (data?.order) {
+        const { orderId, orderStatus } = data.order;
+        
+        console.log('Processing webhook:', { orderId, status: orderStatus });
+        
+        // Find payment by orderId and update status
+        const payment = await storage.getPaymentByOrderId(orderId);
+        if (payment) {
+          if (orderStatus === "PAID") {
+            // Update payment status
+            await storage.updatePaymentStatus(payment.id, "SUCCESS");
+            
+            // Add minutes to user's account if not already added
+            const user = await storage.getUser(payment.userId);
+            if (user) {
+              await storage.updateUserMinutes(payment.userId, payment.minutes);
+              console.log('Minutes added:', { 
+                orderId, 
+                userId: payment.userId, 
+                minutes: payment.minutes 
+              });
+            }
+          } else if (orderStatus === "FAILED") {
+            await storage.updatePaymentStatus(payment.id, "FAILED");
+            console.log('Payment failed:', { orderId, status: orderStatus });
+          }
         }
       }
       
       res.sendStatus(200);
     } catch (error) {
-      console.error("Error processing payment webhook:", error);
+      logPaymentError(error, 'Webhook', orderId);
       res.status(500).json({ message: "Failed to process payment webhook" });
     }
   });
@@ -258,6 +275,27 @@ export function setupPayment(app: Express) {
               color: #ffffff;
               margin-bottom: 20px;
             }
+            .form-group {
+              margin-bottom: 15px;
+            }
+            label {
+              display: block;
+              margin-bottom: 5px;
+              color: #ffffff;
+            }
+            input {
+              width: 100%;
+              padding: 8px;
+              border: 1px solid #444;
+              border-radius: 4px;
+              background-color: rgba(255, 255, 255, 0.1);
+              color: #ffffff;
+            }
+            .error {
+              color: #ff4444;
+              font-size: 14px;
+              margin-top: 5px;
+            }
             .btn {
               background-color: #4caf50;
               border: none;
@@ -285,23 +323,107 @@ export function setupPayment(app: Express) {
               margin-bottom: 20px;
               font-size: 18px;
             }
+            .test-cards {
+              margin-top: 20px;
+              padding: 10px;
+              background-color: rgba(255, 255, 255, 0.1);
+              border-radius: 4px;
+            }
           </style>
         </head>
         <body>
           <div class="container">
             <h1>Payment Simulation</h1>
             <div class="order-id">Order ID: ${orderId}</div>
+            <div class="test-cards">
+              <p>Test Card Numbers:</p>
+              <ul>
+                <li>4242 4242 4242 4242 (Success)</li>
+                <li>4000 0000 0000 0002 (Success)</li>
+                <li>Any other number (Failure)</li>
+              </ul>
+            </div>
             <div>
-              <form action="/api/payments/callback" method="POST">
+              <form action="/api/payments/callback" method="POST" id="paymentForm">
                 <input type="hidden" name="userId" value="${req.query.userId || 1}">
                 <input type="hidden" name="packageId" value="${req.query.packageId || 1}">
                 <input type="hidden" name="orderId" value="${orderId}">
                 <input type="hidden" name="paymentId" value="pay_${Date.now()}">
-                <button type="submit" name="status" value="SUCCESS" class="btn btn-success">Simulate Successful Payment</button>
-                <button type="submit" name="status" value="FAILED" class="btn btn-failure">Simulate Failed Payment</button>
+                
+                <div class="form-group">
+                  <label for="cardNumber">Card Number</label>
+                  <input type="text" id="cardNumber" name="cardNumber" required 
+                         placeholder="4242 4242 4242 4242" maxlength="19">
+                  <div class="error" id="cardError"></div>
+                </div>
+                
+                <div class="form-group">
+                  <label for="expiryDate">Expiry Date (MM/YY)</label>
+                  <input type="text" id="expiryDate" name="expiryDate" required 
+                         placeholder="MM/YY" maxlength="5">
+                  <div class="error" id="expiryError"></div>
+                </div>
+                
+                <div class="form-group">
+                  <label for="cvv">CVV</label>
+                  <input type="text" id="cvv" name="cvv" required 
+                         placeholder="123" maxlength="4">
+                  <div class="error" id="cvvError"></div>
+                </div>
+                
+                <button type="submit" class="btn btn-success">Complete Payment</button>
               </form>
             </div>
           </div>
+          <script>
+            document.getElementById('paymentForm').addEventListener('submit', function(e) {
+              e.preventDefault();
+              
+              const cardNumber = document.getElementById('cardNumber').value.replace(/\s/g, '');
+              const expiryDate = document.getElementById('expiryDate').value;
+              const cvv = document.getElementById('cvv').value;
+              
+              // Validate card number
+              if (!/^\d{16}$/.test(cardNumber)) {
+                document.getElementById('cardError').textContent = 'Invalid card number format';
+                return;
+              }
+              
+              // Validate expiry date
+              if (!/^(0[1-9]|1[0-2])\/([0-9]{2})$/.test(expiryDate)) {
+                document.getElementById('expiryError').textContent = 'Invalid expiry date format';
+                return;
+              }
+              
+              // Validate CVV
+              if (!/^\d{3,4}$/.test(cvv)) {
+                document.getElementById('cvvError').textContent = 'Invalid CVV format';
+                return;
+              }
+              
+              // Check if card is expired
+              const [month, year] = expiryDate.split('/');
+              const currentDate = new Date();
+              const currentYear = currentDate.getFullYear() % 100;
+              const currentMonth = currentDate.getMonth() + 1;
+              
+              if (parseInt(year) < currentYear || 
+                  (parseInt(year) === currentYear && parseInt(month) < currentMonth)) {
+                document.getElementById('expiryError').textContent = 'Card has expired';
+                return;
+              }
+              
+              // Check if it's a valid test card
+              const validTestCards = ['4242424242424242', '4000000000000002'];
+              if (!validTestCards.includes(cardNumber)) {
+                document.getElementById('cardError').textContent = 'Invalid test card number';
+                return;
+              }
+              
+              // If all validations pass, submit the form
+              this.submit();
+            });
+          </script>
         </body>
         </html>
       `);
