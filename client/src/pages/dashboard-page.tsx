@@ -52,21 +52,21 @@ export default function DashboardPage() {
       </div>
       
       {/* Main content tabs */}
-      <TabsList className="mb-6">
-        <TabsTrigger value="usage">Usage Statistics</TabsTrigger>
-        <TabsTrigger value="history">Session History</TabsTrigger>
-      </TabsList>
-      
-      
-      
-      <TabsContent value="history">
-        <SessionHistory 
-          isLoading={loadingConversations}
-          conversations={conversations || []}
-          onStartNewConversation={startConversation}
-          onContinueConversation={(id) => setLocation(`/chat?id=${id}`)}
-        />
-      </TabsContent>
+      <Tabs>
+        <TabsList className="mb-6">
+          <TabsTrigger value="usage">Usage Statistics</TabsTrigger>
+          <TabsTrigger value="history">Session History</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="history">
+          <SessionHistory 
+            isLoading={loadingConversations}
+            conversations={conversations || []}
+            onStartNewConversation={startConversation}
+            onContinueConversation={(id) => setLocation(`/chat?id=${id}`)}
+          />
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
