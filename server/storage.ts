@@ -56,7 +56,67 @@ export class PostgresStorage implements IStorage {
   async setupSchema(): Promise<void> {
     console.log("Setting up PostgreSQL schema...");
     try {
-      // We don't need to create tables here since they are managed by Drizzle ORM
+      // Create tables if they don't exist using raw SQL
+      // Use pool.query to avoid TypeScript issues with db.execute
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          phone TEXT,
+          is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          remaining_minutes DOUBLE PRECISION NOT NULL DEFAULT 0
+        );
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS packages (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          minutes DOUBLE PRECISION NOT NULL,
+          price DOUBLE PRECISION NOT NULL,
+          is_popular BOOLEAN NOT NULL DEFAULT FALSE
+        );
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS payments (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          amount DOUBLE PRECISION NOT NULL,
+          minutes DOUBLE PRECISION NOT NULL,
+          payment_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS conversations (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          ended_at TIMESTAMP,
+          duration_minutes DOUBLE PRECISION,
+          status TEXT NOT NULL
+        );
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS messages (
+          id SERIAL PRIMARY KEY,
+          conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+          content TEXT NOT NULL,
+          is_user BOOLEAN NOT NULL,
+          timestamp TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+      `);
+
       console.log("Schema setup complete");
     } catch (error) {
       console.error("Error setting up schema:", error);
@@ -67,37 +127,51 @@ export class PostgresStorage implements IStorage {
   // Insert sample data if not already present
   async setupSampleData(): Promise<void> {
     try {
-      // Check if we have packages
-      const existingPackages = await this.getPackages();
+      // First check if the packages table exists
+      const packagesTableExists = await this.checkTableExists("packages");
       
-      if (existingPackages.length === 0) {
+      if (!packagesTableExists) {
+        console.log("Packages table does not exist yet. Will be created during schema setup.");
+        return;
+      }
+      
+      // Check if we have packages
+      const existingPackages = await db.select().from(packages);
+      
+      if (!existingPackages || existingPackages.length === 0) {
         console.log("Inserting sample packages...");
         
-        await db.insert(packages).values([
-          {
-            name: "Basic Package",
-            description: "20 minutes of AI therapy",
-            minutes: 20,
-            price: 199,
-            isPopular: false
-          },
-          {
-            name: "Standard Package",
-            description: "60 minutes of AI therapy",
-            minutes: 60,
-            price: 499,
-            isPopular: true
-          },
-          {
-            name: "Premium Package",
-            description: "150 minutes of AI therapy",
-            minutes: 150,
-            price: 999,
-            isPopular: false
-          }
-        ]);
-        
-        console.log("Sample packages created successfully");
+        try {
+          await db.insert(packages).values([
+            {
+              name: "Basic Package",
+              description: "20 minutes of AI therapy",
+              minutes: 20,
+              price: 199,
+              isPopular: false
+            },
+            {
+              name: "Standard Package",
+              description: "60 minutes of AI therapy",
+              minutes: 60,
+              price: 499,
+              isPopular: true
+            },
+            {
+              name: "Premium Package",
+              description: "150 minutes of AI therapy",
+              minutes: 150,
+              price: 999,
+              isPopular: false
+            }
+          ]);
+          
+          console.log("Sample packages created successfully");
+        } catch (insertError) {
+          console.error("Error inserting sample packages:", insertError);
+        }
+      } else {
+        console.log(`Packages already exist (${existingPackages.length} found). Skipping sample data creation.`);
       }
     } catch (error) {
       console.error("Error setting up sample data:", error);
@@ -265,10 +339,37 @@ export class PostgresStorage implements IStorage {
   
   async getPackages(): Promise<Package[]> {
     try {
+      // First try to check if the table exists before querying it
+      const tableExists = await this.checkTableExists("packages");
+      
+      if (!tableExists) {
+        console.log("Packages table does not exist, returning empty array");
+        return [];
+      }
+      
       return await db.select().from(packages);
     } catch (error) {
       console.error("Error getting packages:", error);
       return [];
+    }
+  }
+  
+  // Helper method to check if a table exists
+  private async checkTableExists(tableName: string): Promise<boolean> {
+    try {
+      // Use pool directly instead of db.execute to avoid TypeScript issues
+      const result = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public'
+          AND table_name = $1
+        ) as exists;
+      `, [tableName]);
+      
+      return result.rows.length > 0 && result.rows[0].exists === true;
+    } catch (error) {
+      console.error(`Error checking if table ${tableName} exists:`, error);
+      return false;
     }
   }
   

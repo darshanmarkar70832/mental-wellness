@@ -10,6 +10,10 @@ npm install -g vite
 # Now set NODE_ENV to production for the build and runtime
 export NODE_ENV=production
 
+# Push the database schema to ensure tables exist
+echo "Setting up database schema..."
+npm run db:push
+
 # Build the client
 npm run build
 
